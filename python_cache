@@ -1,0 +1,158 @@
+
+	python使用memcache
+
+		easy_install python-memcached   # 安装(python2.7+)
+		import memcache
+		mc = memcache.Client(['10.152.14.85:12000'],debug=True)
+		mc.set('name','luo',60)
+		mc.get('name')
+		mc.delete('name1')
+		
+		保存数据
+
+			set(key,value,timeout)      # 把key映射到value，timeout指的是什么时候这个映射失效
+			add(key,value,timeout)      # 仅当存储空间中不存在键相同的数据时才保存
+			replace(key,value,timeout)  # 仅当存储空间中存在键相同的数据时才保存
+
+		获取数据
+
+			get(key)                    # 返回key所指向的value
+			get_multi(key1,key2,key3)   # 可以非同步地同时取得多个键值， 比循环调用get快数十倍
+
+	python使用mongodb
+
+		原文: http://blog.nosqlfan.com/html/2989.html
+		
+		easy_install pymongo      # 安装(python2.7+)
+		import pymongo
+		connection=pymongo.Connection('localhost',27017)   # 创建连接
+		db = connection.test_database                      # 切换数据库
+		collection = db.test_collection                    # 获取collection
+		# db和collection都是延时创建的，在添加Document时才真正创建
+
+		文档添加, _id自动创建
+			import datetime
+			post = {"author": "Mike",
+				"text": "My first blog post!",
+				"tags": ["mongodb", "python", "pymongo"],
+				"date": datetime.datetime.utcnow()}
+			posts = db.posts
+			posts.insert(post)
+			ObjectId('...')
+
+		批量插入
+			new_posts = [{"author": "Mike",
+				"text": "Another post!",
+				"tags": ["bulk", "insert"],
+				"date": datetime.datetime(2009, 11, 12, 11, 14)},
+				{"author": "Eliot",
+				"title": "MongoDB is fun",
+				"text": "and pretty easy too!",
+				"date": datetime.datetime(2009, 11, 10, 10, 45)}]
+			posts.insert(new_posts)
+			[ObjectId('...'), ObjectId('...')]
+		
+		获取所有collection
+			db.collection_names()    # 相当于SQL的show tables
+			
+		获取单个文档
+			posts.find_one()
+
+		查询多个文档
+			for post in posts.find():
+				post
+
+		加条件的查询
+			posts.find_one({"author": "Mike"})
+
+		高级查询
+			posts.find({"date": {"$lt": "d"}}).sort("author")
+
+		统计数量
+			posts.count()
+
+		加索引
+			from pymongo import ASCENDING, DESCENDING
+			posts.create_index([("date", DESCENDING), ("author", ASCENDING)])
+
+		查看查询语句的性能
+			posts.find({"date": {"$lt": "d"}}).sort("author").explain()["cursor"]
+			posts.find({"date": {"$lt": "d"}}).sort("author").explain()["nscanned"]
+
+	python使用redis
+
+		https://pypi.python.org/pypi/redis
+		pip install redis  OR easy_install redis
+		import redis
+		r = redis.StrictRedis(host='localhost', port=6379, db=0)
+		r.set('foo', 'bar')
+		r.get('foo')
+		r.save()
+		
+		分片 # 没搞懂
+			redis.connection.Connection(host='localhost', port=6379, db=0,  parser_class=<class 'redis.connection.PythonParser'>)
+			redis.ConnectionPool( connection_class=<class 'redis.connection.Connection'>, max_connections=None, **connection_kwargs)
+
+	python使用kestrel队列
+
+		# pykestrel
+		import kestrel
+
+		q = kestrel.Client(servers=['127.0.0.1:22133'],queue='test_queue') 
+		q.add('some test job') 
+		job = q.get()    # 从队列读取工作
+		job = q.peek()   # 读取下一份工作
+		# 读取一组工作
+		while True:
+			job = q.next(timeout=10) # 完成工作并获取下一个工作，如果没有工作，则等待10秒
+			if job is not None:
+				try:
+					# 流程工作
+				except:
+					q.abort() # 标记失败工作
+
+		q.finish()  # 完成最后工作
+		q.close()   # 关闭连接
+		
+		kestrel状态检查
+			# kestrel支持memcache协议客户端
+			#!/usr/local/bin/python
+			# 10.13.81.125 22133  10000
+
+			import memcache
+			import sys
+			import traceback
+
+			ip="%s:%s" % (sys.argv[1],sys.argv[2])
+			try:
+				mc = memcache.Client([ip,])
+				st=mc.get_stats()
+			except:
+				print "kestrel connection exception"
+				sys.exit(2)
+
+			if st:
+				for s in st[0][1].keys():
+					if s.startswith('queue_') and s.endswith('_mem_items'):
+						num = int(st[0][1][s])
+						if num > int(sys.argv[3]):
+							print "%s block to %s" %(s[6:-6],num)
+							sys.exit(2)
+				print "kestrel ok!"
+				sys.exit(0)
+			else:
+				print "kestrel down"
+				sys.exit(2)
+
+	python使用tarantool
+
+		# pip install tarantool-queue
+
+		from tarantool_queue import Queue
+		queue = Queue("localhost", 33013, 0)     # 连接读写端口 空间0
+		tube = queue.tube("name_of_tube")        # 
+		tube.put([1, 2, 3])
+
+		task = tube.take()
+		task.data     # take task and read data from it
+		task.ack()    # move this task into state DONE
